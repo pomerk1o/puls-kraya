@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Пульс края. Автобусы Краснодарского края, 2025</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0e13;
+    --panel:rgba(11,14,19,.86);
+    --line:rgba(255,255,255,.1);
+    --text:#e9ecf1;
+    --muted:#9aa2ad;
+    --blue:#3d6ff2;
+    --blue-deep:#2f62e8;
+    --warm:#ffc145;
+    --hot:#ff7a1a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{background:var(--bg);color:var(--text);font:400 14px/1.45 Inter,system-ui,sans-serif;overflow:hidden}
+  #map{position:absolute;inset:0}
+  #overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2}
+  .maplibregl-ctrl-bottom-right,.maplibregl-ctrl-bottom-left{z-index:1}
+  .panel{position:absolute;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:4px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  .kicker{display:flex;align-items:center;gap:7px;font:600 10.5px Inter;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .kicker::before{content:"";width:9px;height:9px;background:var(--blue);flex:none}
+  #hud-title{top:14px;left:14px;max-width:440px;padding:14px 16px 12px}
+  #hud-title h1{margin:7px 0 0;font:800 27px/1.08 "Inter Tight",Inter,sans-serif;letter-spacing:-.015em}
+  #hud-title h1 .t2{display:block;font:600 15px/1.25 "Inter Tight",Inter,sans-serif;letter-spacing:0;color:#c8cdd6;margin-top:4px}
+  .subtitle{margin:8px 0 0;font-size:12px;color:var(--muted)}
+  .seen{margin:11px 0 0;padding-top:10px;border-top:1px solid var(--line)}
+  .seen b{font:600 10.5px Inter;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .seen ul{margin:6px 0 0;padding:0 0 0 16px;font-size:12px;color:#c8cdd6}
+  .seen li{margin:3px 0}
+  .seen li b{font:inherit;letter-spacing:0;text-transform:none;color:var(--text)}
+  #hud-counter{top:14px;right:14px;padding:11px 15px;text-align:right;min-width:200px}
+  #hud-counter .lbl{font:600 10.5px Inter;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  #counter{display:block;font:800 26px/1.1 "Inter Tight",Inter,sans-serif;letter-spacing:-.01em;font-variant-numeric:tabular-nums;margin-top:3px}
+  #counter-total{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  #hud-controls{top:14px;right:14px;transform:translateY(0);margin-top:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 11px;top:auto}
+  /* положение панели управления зададим относительно счётчика через контейнер */
+  #hud-right{position:absolute;top:14px;right:14px;z-index:5;display:flex;flex-direction:column;gap:8px;align-items:stretch}
+  #hud-right .panel{position:static}
+  .btn{appearance:none;border:1px solid rgba(255,255,255,.2);background:transparent;color:var(--text);font:500 12px Inter;padding:5px 10px;border-radius:4px;cursor:pointer;transition:background .15s,border-color .15s}
+  .btn:hover{background:rgba(255,255,255,.08)}
+  .btn[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:#fff}
+  .btn:disabled{opacity:.4;cursor:default}
+  .seg{display:flex;gap:0}
+  .seg .btn{border-radius:0;margin-left:-1px}
+  .seg .btn:first-child{border-radius:4px 0 0 4px;margin-left:0}
+  .seg .btn:last-child{border-radius:0 4px 4px 0}
+  .chk{display:flex;align-items:center;gap:7px;font:500 12px Inter;color:#c8cdd6;cursor:pointer;user-select:none}
+  .chk input{accent-color:var(--blue);width:14px;height:14px;margin:0;cursor:pointer}
+  #hud-legend{bottom:56px;right:14px;width:264px;padding:12px 14px}
+  #hud-legend summary{cursor:pointer;font:600 10.5px Inter;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);list-style:none;display:flex;align-items:center;gap:6px}
+  #hud-legend summary::before{content:"";width:9px;height:9px;background:var(--warm);flex:none}
+  #hud-legend[open] summary::before{background:var(--blue)}
+  .lg-sec{margin-top:10px}
+  .lg-lbl{font:600 10px Inter;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  .lg-scale{display:flex;height:10px;border-radius:2px;overflow:hidden}
+  .lg-scale i{flex:1}
+  .lg-scale-ends{display:flex;justify-content:space-between;font:500 11px Inter;color:#c8cdd6;font-variant-numeric:tabular-nums;margin-top:3px}
+  .lg-note{font-size:10.5px;color:var(--muted);margin-top:3px}
+  .lg-sizes{display:flex;align-items:flex-start;gap:10px}
+  .lg-sizes svg{flex:none}
+  .lg-sizes .cap{font-size:11px;color:#c8cdd6;line-height:1.9;font-variant-numeric:tabular-nums}
+  .lg-rhythm{display:flex;align-items:center;gap:9px;font-size:11.5px;color:#c8cdd6}
+  .demo-dot{width:10px;height:10px;border-radius:50%;background:var(--warm);flex:none;animation:pulse 1.4s ease-out infinite}
+  .demo-dot::after{content:"";position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--warm);animation:ring 1.4s ease-out infinite}
+  .demo-dot{position:relative}
+  @keyframes pulse{0%,100%{opacity:.35}12%{opacity:1}}
+  @keyframes ring{0%{transform:scale(1);opacity:.9}100%{transform:scale(2.6);opacity:0}}
+  @media (prefers-reduced-motion: reduce){.demo-dot,.demo-dot::after{animation:none}}
+  .lg-out{font-size:10.5px;color:var(--muted);margin-top:2px}
+  .lg-out b{color:var(--warm);font-weight:600}
+  #hud-source{bottom:56px;left:14px;max-width:400px;padding:8px 12px;font-size:10.5px;color:var(--muted);line-height:1.5}
+  #hud-timeline{position:absolute;z-index:5;left:14px;right:14px;bottom:10px;height:38px;pointer-events:none}
+  #tl-track{position:absolute;left:0;right:0;top:16px;height:3px;background:rgba(255,255,255,.14);border-radius:2px}
+  #tl-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,var(--blue),var(--warm));border-radius:2px}
+  #tl-knob{position:absolute;top:50%;left:0;width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid var(--blue);transform:translate(-50%,-50%)}
+  .tl-month{position:absolute;top:-17px;transform:translateX(-50%);font:500 10px Inter;color:var(--muted);letter-spacing:.06em}
+  .tl-month.first{transform:none}
+  .tl-year{position:absolute;right:0;top:-17px;font:600 10px Inter;color:#c8cdd6;letter-spacing:.08em}
+  #tooltip{position:fixed;z-index:9;max-width:250px;background:#14181f;border:1px solid var(--line);border-radius:4px;padding:9px 12px;font-size:12px;line-height:1.5;color:var(--text);pointer-events:none;box-shadow:0 6px 22px rgba(0,0,0,.5)}
+  #tooltip .tt-name{font:600 13px "Inter Tight",Inter,sans-serif;margin-bottom:2px}
+  #tooltip .tt-dim{color:var(--muted)}
+  #tooltip .tt-key{color:var(--warm);font-weight:500}
+  #pin{position:absolute;z-index:6;width:236px;background:#14181f;border:1px solid var(--blue);border-radius:4px;padding:10px 12px;box-shadow:0 8px 26px rgba(0,0,0,.55)}
+  #pin .p-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  #pin .p-name{font:600 13px "Inter Tight",Inter,sans-serif}
+  #pin .p-close{appearance:none;background:none;border:none;color:var(--muted);font:400 15px/1 Inter;cursor:pointer;padding:0 2px}
+  #pin .p-close:hover{color:#fff}
+  #pin .p-val{font-size:11px;color:var(--muted);margin-top:2px}
+  #pin .p-cnt{margin-top:8px;font:600 10.5px Inter;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  #pin .p-num{font:800 19px/1.15 "Inter Tight",Inter,sans-serif;font-variant-numeric:tabular-nums;margin-top:1px}
+  #pin .p-num small{font:500 11px Inter;color:var(--muted)}
+  #pin .p-tl{position:relative;height:16px;margin-top:8px;border-top:1px solid rgba(255,255,255,.18)}
+  #pin .p-tl i{position:absolute;top:-2px;width:2px;height:5px;background:var(--warm);border-radius:1px}
+  #pin .p-prog{position:absolute;top:-1px;bottom:-4px;width:2px;background:var(--blue);left:0}
+  #pin .p-tl-cap{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:3px}
+  .sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  @media (max-width:860px){
+    #hud-title{max-width:calc(100vw - 28px);padding:11px 13px 10px}
+    #hud-title h1{font-size:20px}
+    #hud-title h1 .t2{font-size:13px}
+    .subtitle{font-size:11.5px}
+    #hud-right{top:auto;bottom:120px;left:14px;right:auto;align-items:flex-start}
+    #hud-counter{min-width:0;padding:8px 12px;text-align:left}
+    #counter{font-size:20px}
+    #hud-legend{bottom:56px;right:14px;width:min(264px,calc(100vw - 28px))}
+    #hud-source{display:none}
+    #hud-title .seen{display:none}
+    #hud-title .seen-m{display:block;margin-top:9px;padding-top:9px;border-top:1px solid var(--line);font-size:11.5px;color:#c8cdd6}
+  }
+  @media (min-width:861px){ #hud-title .seen-m{display:none} }
+</style>
+</head>
+<body>
+<div id="map" aria-hidden="true"></div>
+<canvas id="overlay"></canvas>
+
+<header id="hud-title" class="panel">
+  <div class="kicker">Росстат · Автобусные перевозки · 2025</div>
+  <h1>Пульс края.<span class="t2">Как часто житель Краснодарского края садится в автобус. 2025</span></h1>
+  <p class="subtitle">Один год сжат до минуты. Каждая вспышка — одна поездка жителя в среднем. Размер точки — население. Тёмные точки — данных нет.</p>
+  <div class="seen">
+    <b>Что видно</b>
+    <ul id="seen-list"></ul>
+  </div>
+  <div class="seen-m" id="seen-mobile" hidden></div>
+</header>
+
+<div id="hud-right">
+  <div id="hud-counter" class="panel">
+    <span class="lbl">Счётчик поездок за год</span>
+    <span id="counter">0</span>
+    <span id="counter-total"></span>
+  </div>
+  <div id="hud-controls" class="panel">
+    <button id="btnPause" class="btn" type="button">Пауза</button>
+    <div class="seg" role="group" aria-label="Скорость года">
+      <button class="btn" type="button" data-y="30">30 с</button>
+      <button class="btn" type="button" data-y="60" aria-pressed="true">60 с</button>
+      <button class="btn" type="button" data-y="120">120 с</button>
+    </div>
+    <div class="seg" role="group" aria-label="Режим">
+      <button class="btn" type="button" data-mode="rhythm" aria-pressed="true">Ритм</button>
+      <button class="btn" type="button" data-mode="static">Статика</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="chkNodata" checked>Пункты без данных</label>
+  </div>
+</div>
+
+<aside id="hud-legend" class="panel" open>
+  <details id="lg-details" open>
+    <summary>Легенда</summary>
+    <div class="lg-sec">
+      <div class="lg-lbl">Поездок на человека в год · цвет по квантилям</div>
+      <div class="lg-scale" id="lg-scale"></div>
+      <div class="lg-scale-ends"><span id="lg-min"></span><span id="lg-max"></span></div>
+      <div class="lg-note">Холодный — поездок мало, тёплый — много. Значения выше 100 поездок показаны отдельно.</div>
+    </div>
+    <div class="lg-sec">
+      <div class="lg-lbl">Размер точки — население</div>
+      <div class="lg-sizes">
+        <svg width="86" height="88" aria-hidden="true">
+          <circle cx="26" cy="82" r="3"  fill="#7d848e" fill-opacity=".55" stroke="rgba(255,255,255,.25)" stroke-width=".8"/>
+          <circle cx="26" cy="74" r="9.3" fill="#7d848e" fill-opacity=".4" stroke="rgba(255,255,255,.25)" stroke-width=".8"/>
+          <circle cx="43" cy="46" r="39.6" fill="#7d848e" fill-opacity=".22" stroke="rgba(255,255,255,.3)" stroke-width=".8"/>
+          <line x1="52" y1="76" x2="86" y2="76" stroke="rgba(255,255,255,.2)" stroke-width="1"/>
+          <line x1="52" y1="68" x2="86" y2="68" stroke="rgba(255,255,255,.2)" stroke-width="1"/>
+          <line x1="84" y1="46" x2="86" y2="46" stroke="rgba(255,255,255,.2)" stroke-width="1"/>
+        </svg>
+        <div class="cap">1 000<br>50 000<br>900 000</div>
+      </div>
+    </div>
+    <div class="lg-sec">
+      <div class="lg-lbl">Ритм</div>
+      <div class="lg-rhythm"><span class="demo-dot" aria-hidden="true"></span><span>25 поездок — вспышка раз в 14,6 дня</span></div>
+    </div>
+    <div class="lg-sec">
+      <div class="lg-out"><b>Борисовка ×7,7</b> и <b>Семигорский ×2,7</b> к 100 поездкам показаны ровным свечением, без вспышек. Значения, вероятно, завышены из-за сопоставления маршрутов с малым населением.</div>
+    </div>
+  </details>
+</aside>
+
+<div id="hud-source" class="panel">Источник: Росстат, 2025. Для 5 населённых пунктов нет координат, они не показаны: <span id="missing-list"></span>.</div>
+
+<div id="hud-timeline" aria-hidden="true">
+  <div id="tl-track">
+    <div id="tl-fill"></div>
+    <div id="tl-knob"></div>
+  </div>
+  <div id="tl-months"></div>
+  <div class="tl-year">2025</div>
+</div>
+
+<div id="tooltip" hidden></div>
+
+<div id="pin" hidden>
+  <div class="p-head"><span class="p-name" id="p-name"></span><button class="p-close" id="p-close" type="button" aria-label="Открепить">×</button></div>
+  <div class="p-val" id="p-val"></div>
+  <div class="p-cnt">Личный счётчик за прошедший год</div>
+  <div class="p-num" id="p-num"></div>
+  <div class="p-tl" id="p-tl"><div class="p-prog" id="p-prog"></div></div>
+  <div class="p-tl-cap"><span>январь</span><span>декабрь</span></div>
+</div>
+
+<div class="sr-only">Интерактивная карта населённых пунктов Краснодарского края. Точки — населённые пункты, размер пропорционален населению, цвет показывает число автобусных поездок на человека в год по данным Росстата за 2025 год. Населённые пункты с данными мигают: каждая вспышка — одна поездка в среднем.</div>
+
+<script>
+const DATA = {"points": [{"nm": "село Борисовка", "lb": "Борисовка", "ldx": 1.0, "ldy": 1.1, "la": "left", "lat": 44.755177, "lon": 37.694248, "pop": 3188.0, "t": 773.6825595984943, "bus": 21.0, "b10": 65.87202007528231, "oktmo": "3720000116", "ph": 0.4742, "ci": 4, "out": 7.736825595984943}, {"nm": "хутор Семигорский", "lb": "Семигорский", "ldx": 0.0, "ldy": -1.4, "la": "center", "lat": 44.882514, "lon": 37.605273, "pop": 400.0, "t": 268.75, "bus": 4.0, "b10": 100.0, "oktmo": "3720000201", "ph": 0.8632, "ci": 4, "out": 2.6875}, {"nm": "город Краснодар", "lb": "Краснодар", "ldx": 1.0, "ldy": 0.0, "la": "left", "lat": 45.035472, "lon": 38.975315, "pop": 918145.0, "t": 95.76819565537033, "bus": 1206.0, "b10": 13.13518017306635, "oktmo": "3701000001", "ph": 0.5941, "ci": 4, "out": null}, {"nm": "станица Раевская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.836283, "lon": 37.549692, "pop": 10020.0, "t": 82.9940119760479, "bus": 21.0, "b10": 20.95808383233533, "oktmo": "3720000191", "ph": 0.4645, "ci": 4, "out": null}, {"nm": "станица Голубицкая", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.323318, "lon": 37.274958, "pop": 5570.0, "t": 78.1867145421903, "bus": 10.0, "b10": 17.95332136445242, "oktmo": "3651407101", "ph": 0.7998, "ci": 4, "out": null}, {"nm": "город Новороссийск", "lb": "Новороссийск", "ldx": 0.0, "ldy": 1.5, "la": "center", "lat": 44.723773, "lon": 37.768809, "pop": 275197.0, "t": 75.41564769964789, "bus": 449.0, "b10": 16.3155848355905, "oktmo": "3720000001", "ph": 0.8891, "ci": 4, "out": null}, {"nm": "село Абрау-Дюрсо", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.698623, "lon": 37.603029, "pop": 3519.0, "t": 74.16879795396419, "bus": 8.0, "b10": 22.73373117362887, "oktmo": "3720000106", "ph": 0.0755, "ci": 3, "out": null}, {"nm": "город Туапсе", "lb": "Туапсе", "ldx": 1.0, "ldy": 0.0, "la": "left", "lat": 44.094643, "lon": 39.073098, "pop": 61180.0, "t": 72.36204642039883, "bus": 89.0, "b10": 14.54723765936581, "oktmo": "3555000001", "ph": 0.4858, "ci": 3, "out": null}, {"nm": "город Анапа", "lb": "Анапа", "ldx": -1.0, "ldy": 0.0, "la": "right", "lat": 44.894965, "lon": 37.316177, "pop": 75865.0, "t": 67.38957358465696, "bus": 260.0, "b10": 34.27140315033283, "oktmo": "3501000001", "ph": 0.2265, "ci": 3, "out": null}, {"nm": "село Мысхако", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.657295, "lon": 37.760525, "pop": 7954.0, "t": 64.75986924817701, "bus": 12.0, "b10": 15.08674880563239, "oktmo": "3720000176", "ph": 0.8664, "ci": 3, "out": null}, {"nm": "город Апшеронск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.465399, "lon": 39.726785, "pop": 39762.0, "t": 48.09441174991198, "bus": 61.0, "b10": 15.34128061968714, "oktmo": "3605101001", "ph": 0.5024, "ci": 3, "out": null}, {"nm": "станица Фастовецкая", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.917237, "lon": 40.152199, "pop": 8700.0, "t": 41.33793103448276, "bus": 7.0, "b10": 8.045977011494253, "oktmo": "3654422101", "ph": 0.4834, "ci": 3, "out": null}, {"nm": "село Гайдук", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.783763, "lon": 37.699164, "pop": 7484.0, "t": 39.61785141635489, "bus": 6.0, "b10": 8.017103153393908, "oktmo": "3720000136", "ph": 0.2716, "ci": 2, "out": null}, {"nm": "город Славянск-на-Кубани", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.26033, "lon": 38.128223, "pop": 67919.0, "t": 37.19062412579691, "bus": 50.0, "b10": 7.361710272530514, "oktmo": "3645101001", "ph": 0.1759, "ci": 2, "out": null}, {"nm": "город Курганинск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.887647, "lon": 40.591371, "pop": 48689.0, "t": 29.48633161494383, "bus": 52.0, "b10": 10.68003039700959, "oktmo": "3627101001", "ph": 0.4228, "ci": 2, "out": null}, {"nm": "станица Новотитаровская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.236548, "lon": 38.971768, "pop": 24754.0, "t": 28.83170396703563, "bus": 75.0, "b10": 30.29813363496809, "oktmo": "3614416101", "ph": 0.5867, "ci": 2, "out": null}, {"nm": "город Кропоткин", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.434692, "lon": 40.575999, "pop": 78631.0, "t": 27.50314761353665, "bus": 73.0, "b10": 9.283870229298877, "oktmo": "3618101001", "ph": 0.5463, "ci": 2, "out": null}, {"nm": "город Приморско-Ахтарск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.043507, "lon": 38.177652, "pop": 32048.0, "t": 26.4053919121318, "bus": 42.0, "b10": 13.10534198701947, "oktmo": "3541000001", "ph": 0.9, "ci": 2, "out": null}, {"nm": "город Крымск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.935432, "lon": 37.987926, "pop": 57927.0, "t": 25.3570873685846, "bus": 50.0, "b10": 8.63155350700019, "oktmo": "3625101001", "ph": 0.3392, "ci": 1, "out": null}, {"nm": "город Лабинск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.635716, "lon": 40.723577, "pop": 60164.0, "t": 24.84043614121401, "bus": 74.0, "b10": 12.29971411475301, "oktmo": "3630101001", "ph": 0.0483, "ci": 1, "out": null}, {"nm": "город Абинск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.866261, "lon": 38.151169, "pop": 39058.0, "t": 23.5593220338983, "bus": 22.0, "b10": 5.632648881151108, "oktmo": "3601101001", "ph": 0.335, "ci": 1, "out": null}, {"nm": "город Армавир", "lb": "Армавир", "ldx": 1.0, "ldy": 0.0, "la": "left", "lat": 44.997655, "lon": 41.129647, "pop": 190709.0, "t": 23.39994441793518, "bus": 289.0, "b10": 15.15397805032799, "oktmo": "3705000001", "ph": 0.7615, "ci": 1, "out": null}, {"nm": "город Белореченск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.766015, "lon": 39.868489, "pop": 51590.0, "t": 21.98139174258577, "bus": null, "b10": null, "oktmo": "3608101001", "ph": 0.1279, "ci": 1, "out": null}, {"nm": "город Темрюк", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.282046, "lon": 37.365386, "pop": 41413.0, "t": 20.20621543959626, "bus": 41.0, "b10": 9.900272861178857, "oktmo": "3651101001", "ph": 0.4269, "ci": 1, "out": null}, {"nm": "город Тихорецк", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.852782, "lon": 40.123168, "pop": 57098.0, "t": 19.44936775368664, "bus": 46.0, "b10": 8.05632421450839, "oktmo": "3654101001", "ph": 0.0525, "ci": 0, "out": null}, {"nm": "посёлок городского типа Ильский", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.835943, "lon": 38.561999, "pop": 25502.0, "t": 17.12414712571563, "bus": 18.0, "b10": 7.058269939612579, "oktmo": "3643155051", "ph": 0.095, "ci": 0, "out": null}, {"nm": "станица Каневская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.084805, "lon": 38.971951, "pop": 44386.0, "t": 15.78200333438472, "bus": 42.0, "b10": 9.462443112693192, "oktmo": "3620402101", "ph": 0.6501, "ci": 0, "out": null}, {"nm": "станица Северская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.853762, "lon": 38.681943, "pop": 22500.0, "t": 11.88, "bus": 38.0, "b10": 16.88888888888889, "oktmo": "3643413101", "ph": 0.6883, "ci": 0, "out": null}, {"nm": "станица Новопокровская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.953829, "lon": 40.707009, "pop": 19100.0, "t": 8.613089005235603, "bus": 9.0, "b10": 4.712041884816754, "oktmo": "3635419101", "ph": 0.5769, "ci": 0, "out": null}, {"nm": "станица Елизаветинская", "lb": "Елизаветинская", "ldx": -1.6, "ldy": 1.2, "la": "right", "lat": 45.048432, "lon": 38.799901, "pop": 24755.0, "t": 4.457281357301556, "bus": 15.0, "b10": 6.05938194304181, "oktmo": "3701000131", "ph": 0.7773, "ci": 0, "out": null}, {"nm": "аул Псебе", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.285908, "lon": 38.954219, "pop": 530.0, "t": null, "bus": null, "b10": null, "oktmo": "3555000150", "ph": 0.4265, "ci": null, "out": null}, {"nm": "город Геленджик", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.561011, "lon": 38.077117, "pop": 76783.0, "t": null, "bus": null, "b10": null, "oktmo": "3708000001", "ph": 0.387, "ci": null, "out": null}, {"nm": "город Горячий Ключ", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.634247, "lon": 39.136429, "pop": 40299.0, "t": null, "bus": null, "b10": null, "oktmo": "3504000001", "ph": 0.852, "ci": null, "out": null}, {"nm": "город Ейск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.711941, "lon": 38.272658, "pop": 83094.0, "t": null, "bus": null, "b10": null, "oktmo": "3616101001", "ph": 0.4626, "ci": null, "out": null}, {"nm": "город Кореновск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.462743, "lon": 39.448038, "pop": 42019.0, "t": null, "bus": null, "b10": null, "oktmo": "3621101001", "ph": 0.1718, "ci": null, "out": null}, {"nm": "город Новокубанск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.103798, "lon": 41.043933, "pop": 35287.0, "t": null, "bus": null, "b10": null, "oktmo": "3634101001", "ph": 0.2157, "ci": null, "out": null}, {"nm": "город Сочи", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 43.585475, "lon": 39.723095, "pop": 443562.0, "t": null, "bus": null, "b10": null, "oktmo": "3726000001", "ph": 0.1401, "ci": null, "out": null}, {"nm": "город Тимашевск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.614203, "lon": 38.93397, "pop": 50792.0, "t": null, "bus": 72.0, "b10": 14.17546070247283, "oktmo": "3653101001", "ph": 0.5106, "ci": null, "out": null}, {"nm": "город Хадыженск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.422805, "lon": 39.537328, "pop": 22468.0, "t": null, "bus": null, "b10": null, "oktmo": "3605109001", "ph": 0.4667, "ci": null, "out": null}, {"nm": "посёлок Большевик", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.514666, "lon": 38.234249, "pop": 300.0, "t": null, "bus": null, "b10": null, "oktmo": "3616421106", "ph": 0.2224, "ci": null, "out": null}, {"nm": "поселок Газырь", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.746175, "lon": 39.933309, "pop": 2100.0, "t": null, "bus": null, "b10": null, "oktmo": "3612416101", "ph": 0.503, "ci": null, "out": null}, {"nm": "посёлок Знаменский", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.054049, "lon": 39.150213, "pop": 6242.0, "t": null, "bus": null, "b10": null, "oktmo": "3701000141", "ph": 0.176, "ci": null, "out": null}, {"nm": "посёлок Индустриальный", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.092451, "lon": 39.107135, "pop": 4785.0, "t": null, "bus": null, "b10": null, "oktmo": "3701000151", "ph": 0.5747, "ci": null, "out": null}, {"nm": "посёлок Комсомолец", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.579255, "lon": 38.261474, "pop": 2033.0, "t": null, "bus": null, "b10": null, "oktmo": "3616416101", "ph": 0.6703, "ci": null, "out": null}, {"nm": "посёлок Лазурный", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.152618, "lon": 39.127288, "pop": 2754.0, "t": null, "bus": null, "b10": null, "oktmo": "3701000176", "ph": 0.5715, "ci": null, "out": null}, {"nm": "поселок Парковый", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.838033, "lon": 40.146868, "pop": 4500.0, "t": null, "bus": null, "b10": null, "oktmo": "3654416101", "ph": 0.2602, "ci": null, "out": null}, {"nm": "посёлок Совхозный", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.293965, "lon": 38.112159, "pop": 3900.0, "t": null, "bus": null, "b10": null, "oktmo": "3645414101", "ph": 0.6426, "ci": null, "out": null}, {"nm": "посёлок Широчанка", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.659028, "lon": 38.33208, "pop": 6025.0, "t": null, "bus": null, "b10": null, "oktmo": "3616101136", "ph": 0.8451, "ci": null, "out": null}, {"nm": "посёлок городского типа Афипский", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.90335, "lon": 38.841129, "pop": 21499.0, "t": null, "bus": null, "b10": null, "oktmo": "3643152051", "ph": 0.4834, "ci": null, "out": null}, {"nm": "посёлок городского типа Ахтырский", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.850358, "lon": 38.299829, "pop": 21067.0, "t": null, "bus": null, "b10": null, "oktmo": "3601153051", "ph": 0.5967, "ci": null, "out": null}, {"nm": "посёлок городского типа Гирей", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.405267, "lon": 40.664202, "pop": 6363.0, "t": null, "bus": null, "b10": null, "oktmo": "3613154051", "ph": 0.9693, "ci": null, "out": null}, {"nm": "поселок городского типа Мостовской", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.414361, "lon": 40.790282, "pop": 24975.0, "t": null, "bus": null, "b10": null, "oktmo": "3633151051", "ph": 0.1945, "ci": null, "out": null}, {"nm": "посёлок городского типа Нефтегорск", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.353682, "lon": 39.704279, "pop": 4968.0, "t": null, "bus": null, "b10": null, "oktmo": "3605157051", "ph": 0.2463, "ci": null, "out": null}, {"nm": "посёлок городского типа Псебай", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.116081, "lon": 40.798601, "pop": 10533.0, "t": null, "bus": null, "b10": null, "oktmo": "3633156051", "ph": 0.5472, "ci": null, "out": null}, {"nm": "село Архипо-Осиповка", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.370104, "lon": 38.533398, "pop": 6100.0, "t": null, "bus": null, "b10": null, "oktmo": "3708000111", "ph": 0.7728, "ci": null, "out": null}, {"nm": "село Белая Глина", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.07367, "lon": 40.871331, "pop": 17800.0, "t": null, "bus": null, "b10": null, "oktmo": "3607402101", "ph": 0.6062, "ci": null, "out": null}, {"nm": "село Беноково", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.419609, "lon": 40.677685, "pop": 1900.0, "t": null, "bus": null, "b10": null, "oktmo": "3633410101", "ph": 0.6583, "ci": null, "out": null}, {"nm": "село Благодарное", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.496937, "lon": 41.543309, "pop": 1700.0, "t": null, "bus": null, "b10": null, "oktmo": "3637402101", "ph": 0.8614, "ci": null, "out": null}, {"nm": "село Варнавинское", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.993646, "lon": 38.195298, "pop": 1200.0, "t": null, "bus": null, "b10": null, "oktmo": "3601401101", "ph": 0.4846, "ci": null, "out": null}, {"nm": "село Витязево", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.002359, "lon": 37.283808, "pop": 7936.0, "t": null, "bus": null, "b10": null, "oktmo": "3501000114", "ph": 0.7319, "ci": null, "out": null}, {"nm": "село Гай-Кодзор", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.854401, "lon": 37.437743, "pop": 3662.0, "t": null, "bus": null, "b10": null, "oktmo": "3501000116", "ph": 0.8116, "ci": null, "out": null}, {"nm": "село Георгиевское", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.162817, "lon": 39.254233, "pop": 1606.0, "t": null, "bus": null, "b10": null, "oktmo": "3555000112", "ph": 0.9114, "ci": null, "out": null}, {"nm": "село Кирилловка", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.768021, "lon": 37.726476, "pop": 1350.0, "t": null, "bus": null, "b10": null, "oktmo": "3720000161", "ph": 0.2683, "ci": null, "out": null}, {"nm": "село Михайловское", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.008562, "lon": 38.503466, "pop": 1700.0, "t": null, "bus": null, "b10": null, "oktmo": "3643408101", "ph": 0.3356, "ci": null, "out": null}, {"nm": "село Навагинское", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.366953, "lon": 39.33808, "pop": 270.0, "t": null, "bus": null, "b10": null, "oktmo": "3555000137", "ph": 0.9082, "ci": null, "out": null}, {"nm": "село Пластунка", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 43.682491, "lon": 39.761011, "pop": 2498.0, "t": null, "bus": null, "b10": null, "oktmo": "3726000406", "ph": 0.2877, "ci": null, "out": null}, {"nm": "село Русское", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.959884, "lon": 37.840222, "pop": 500.0, "t": null, "bus": null, "b10": null, "oktmo": "3625419176", "ph": 0.1488, "ci": null, "out": null}, {"nm": "село Суворовское", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.277116, "lon": 39.434767, "pop": 2704.0, "t": null, "bus": null, "b10": null, "oktmo": "3657431101", "ph": 0.9438, "ci": null, "out": null}, {"nm": "село Супсех", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.860788, "lon": 37.358242, "pop": 8744.0, "t": null, "bus": null, "b10": null, "oktmo": "3501000143", "ph": 0.8881, "ci": null, "out": null}, {"nm": "село Цибанобалка", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.97839, "lon": 37.333749, "pop": 5452.0, "t": null, "bus": null, "b10": null, "oktmo": "3501000148", "ph": 0.0875, "ci": null, "out": null}, {"nm": "село Цыпка", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.157599, "lon": 39.177823, "pop": 750.0, "t": null, "bus": null, "b10": null, "oktmo": "3555000157", "ph": 0.7056, "ci": null, "out": null}, {"nm": "станица Анапская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.900345, "lon": 37.381292, "pop": 18978.0, "t": null, "bus": null, "b10": null, "oktmo": "3501000102", "ph": 0.2534, "ci": null, "out": null}, {"nm": "станица Анастасиевская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.215632, "lon": 37.894773, "pop": 11000.0, "t": null, "bus": null, "b10": null, "oktmo": "3645402101", "ph": 0.1961, "ci": null, "out": null}, {"nm": "станица Брюховецкая", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.802, "lon": 38.997294, "pop": 22000.0, "t": null, "bus": null, "b10": null, "oktmo": "3610407101", "ph": 0.5844, "ci": null, "out": null}, {"nm": "станица Выселки", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.580043, "lon": 39.655416, "pop": 20798.0, "t": null, "bus": null, "b10": null, "oktmo": "3612413101", "ph": 0.8914, "ci": null, "out": null}, {"nm": "станица Динская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.218579, "lon": 39.223071, "pop": 34100.0, "t": null, "bus": null, "b10": null, "oktmo": "3614404101", "ph": 0.1402, "ci": null, "out": null}, {"nm": "станица Ивановская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.269419, "lon": 38.465207, "pop": 9643.0, "t": null, "bus": null, "b10": null, "oktmo": "3623407101", "ph": 0.6283, "ci": null, "out": null}, {"nm": "станица Кабардинская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.495189, "lon": 39.493562, "pop": 2300.0, "t": null, "bus": null, "b10": null, "oktmo": "3605407101", "ph": 0.8752, "ci": null, "out": null}, {"nm": "станица Кущёвская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.556955, "lon": 39.622105, "pop": 23000.0, "t": null, "bus": null, "b10": null, "oktmo": "3628416101", "ph": 0.1724, "ci": null, "out": null}, {"nm": "станица Ленинградская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.320551, "lon": 39.392888, "pop": 38200.0, "t": null, "bus": null, "b10": null, "oktmo": "3532000101", "ph": 0.0105, "ci": null, "out": null}, {"nm": "станица Марьянская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.098994, "lon": 38.636213, "pop": 11169.0, "t": null, "bus": null, "b10": null, "oktmo": "3623412101", "ph": 0.981, "ci": null, "out": null}, {"nm": "станица Натухаевская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.912141, "lon": 37.56959, "pop": 6922.0, "t": null, "bus": null, "b10": null, "oktmo": "3720000181", "ph": 0.0657, "ci": null, "out": null}, {"nm": "станица Нижнебаканская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.866548, "lon": 37.86665, "pop": 8500.0, "t": null, "bus": null, "b10": null, "oktmo": "3625412101", "ph": 0.0647, "ci": null, "out": null}, {"nm": "станица Новоджерелиевская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.774495, "lon": 38.671277, "pop": 5300.0, "t": null, "bus": null, "b10": null, "oktmo": "3610410101", "ph": 0.1961, "ci": null, "out": null}, {"nm": "станица Новомалороссийская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.6379, "lon": 39.897165, "pop": 7000.0, "t": null, "bus": null, "b10": null, "oktmo": "3612425101", "ph": 0.3379, "ci": null, "out": null}, {"nm": "станица Павловская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.13054, "lon": 39.790968, "pop": 30700.0, "t": null, "bus": null, "b10": null, "oktmo": "3639428101", "ph": 0.5791, "ci": null, "out": null}, {"nm": "станица Полтавская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.366803, "lon": 38.211472, "pop": 26365.0, "t": null, "bus": null, "b10": null, "oktmo": "3623410101", "ph": 0.24, "ci": null, "out": null}, {"nm": "станица Роговская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.732948, "lon": 38.734957, "pop": 8300.0, "t": null, "bus": null, "b10": null, "oktmo": "3653428101", "ph": 0.1649, "ci": null, "out": null}, {"nm": "станица Саратовская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.707149, "lon": 39.230149, "pop": 6000.0, "t": null, "bus": null, "b10": null, "oktmo": "3504000122", "ph": 0.6764, "ci": null, "out": null}, {"nm": "станица Советская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.783058, "lon": 41.170252, "pop": 10000.0, "t": null, "bus": null, "b10": null, "oktmo": "3634431101", "ph": 0.4816, "ci": null, "out": null}, {"nm": "станица Старотитаровская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.224698, "lon": 37.159515, "pop": 12200.0, "t": null, "bus": null, "b10": null, "oktmo": "3651422101", "ph": 0.8579, "ci": null, "out": null}, {"nm": "станица Тамань", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.215612, "lon": 36.718417, "pop": 11672.0, "t": null, "bus": null, "b10": null, "oktmo": "3651425101", "ph": 0.4696, "ci": null, "out": null}, {"nm": "станица Тбилисская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.364528, "lon": 40.201771, "pop": 24100.0, "t": null, "bus": null, "b10": null, "oktmo": "3649419101", "ph": 0.1626, "ci": null, "out": null}, {"nm": "станица Холмская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.848044, "lon": 38.389232, "pop": 17300.0, "t": null, "bus": null, "b10": null, "oktmo": "3601408101", "ph": 0.5784, "ci": null, "out": null}, {"nm": "станица Шкуринская", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.582051, "lon": 39.364843, "pop": 4900.0, "t": null, "bus": null, "b10": null, "oktmo": "3628431101", "ph": 0.2305, "ci": null, "out": null}, {"nm": "хутор Бараниковский", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.339512, "lon": 38.017879, "pop": 2700.0, "t": null, "bus": null, "b10": null, "oktmo": "3645416101", "ph": 0.3837, "ci": null, "out": null}, {"nm": "хутор Даманка", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.970663, "lon": 37.788856, "pop": 850.0, "t": null, "bus": null, "b10": null, "oktmo": "3625419121", "ph": 0.9559, "ci": null, "out": null}, {"nm": "хутор Киновия", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.907868, "lon": 38.930189, "pop": 360.0, "t": null, "bus": null, "b10": null, "oktmo": "3610422106", "ph": 0.8419, "ci": null, "out": null}, {"nm": "хутор Новоукраинский", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.89401, "lon": 38.044815, "pop": 3500.0, "t": null, "bus": null, "b10": null, "oktmo": "3625413101", "ph": 0.9353, "ci": null, "out": null}, {"nm": "хутор Павловский", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 45.073942, "lon": 37.772617, "pop": 1000.0, "t": null, "bus": null, "b10": null, "oktmo": "3625407101", "ph": 0.712, "ci": null, "out": null}, {"nm": "хутор Терзиян", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 44.210726, "lon": 39.42796, "pop": 290.0, "t": null, "bus": null, "b10": null, "oktmo": "3555000154", "ph": 0.586, "ci": null, "out": null}, {"nm": "хутор Упорный", "lb": null, "ldx": 0, "ldy": 0, "la": "left", "lat": 46.145422, "lon": 39.983128, "pop": 1100.0, "t": null, "bus": null, "b10": null, "oktmo": "3639440101", "ph": 0.0256, "ci": null, "out": null}], "cuts": [4.457281357301556, 20.054845902414336, 25.98607009471292, 40.305883263606034, 74.41816790310094, 773.6825595984943], "stats": {"plotted": 102, "withData": 30, "median": 29.15901779098973, "maxNo": 95.76819565537033, "maxName": "Краснодар", "minNo": 4.457281357301556, "minName": "Елизаветинская", "ratio": 21.485786509413558, "total": 146199500.0, "missing": ["п им М. Горького", "ст-ца Отрадная", "х Веселый", "х Калинина", "х Победа"]}};
+const PTS = DATA.points, ST = DATA.stats, CUTS = DATA.cuts;
+const COLORS = ['#2f62e8','#5296f2','#8fc8ea','#ffc145','#ff7a1a'];
+const WARM = '#ff8a00';
+const GRAY = 'rgba(126,133,144,.5)';
+const K = 40/Math.sqrt(918145);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- форматирование ---------- */
+const fmt  = (n,d=0)=> n==null ? '—' : n.toLocaleString('ru-RU',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtC = n => Math.round(n).toLocaleString('ru-RU');
+
+PTS.forEach(p => {
+  p.r = p.pop ? Math.max(3, K*Math.sqrt(p.pop)) : 3;
+  if(p.out!=null) p.outS = '×'+fmt(p.out,1);
+});
+
+/* ---------- состояние ---------- */
+let yearDur = 60, tau = 0, running = true;
+let mode = reduced ? 'static' : 'rhythm';
+let showNoData = true, pinned = -1;
+let lastTs = null, raf = null;
+
+/* ---------- карта ---------- */
+function rasterStyle(){
+  const t = ['https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'];
+  return {version:8,
+    sources:{esri:{type:'raster',tiles:t,tileSize:256,maxzoom:16,attribution:'Esri, HERE, Garmin, FAO, NOAA, USGS'}},
+    layers:[{id:'bg',type:'background',paint:{'background-color':'#0b0e13'}},
+            {id:'esri',type:'raster',source:'esri',paint:{'raster-opacity':.55}}]};
+}
+let map = null;
+const scr = [];
+function initMap(style){
+  map = new maplibregl.Map({
+    container:'map', style, center:[38.6,45.0], zoom:6.6,
+    minZoom:4.5, maxZoom:12, attributionControl:false, dragRotate:false, pitchWithRotate:false
+  });
+  map.addControl(new maplibregl.AttributionControl({compact:true}));
+  window.map = map;
+  map.on('error', e => console.warn('maplibre:', (e && e.error && e.error.message) || e));
+  ['move','zoom','rotate','pitch','resize'].forEach(ev => map.on(ev, needDraw));
+  map.on('mousemove', onHover);
+  map.on('mouseout', hideTip);
+  map.on('click', onClick);
+}
+
+/* ---------- canvas ---------- */
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+let cw=0, ch=0;
+
+function needDraw(){ if(raf==null) raf = requestAnimationFrame(frame); }
+function active(){ return mode==='rhythm' && running; }
+
+function frame(ts){
+  raf = null;
+  if(lastTs!=null && active()) tau = (tau + Math.min((ts-lastTs)/1000, 0.25)) % yearDur;
+  lastTs = ts;
+  draw(); updateHud();
+  if(active()) needDraw();
+}
+
+function projectAll(){
+  const m = 80;
+  for(let i=0;i<PTS.length;i++){
+    const p = map.project([PTS[i].lon, PTS[i].lat]);
+    p.vis = p.x>-m && p.x<cw+m && p.y>-m && p.y<ch+m;
+    scr[i] = p;
+  }
+}
+
+function draw(){
+  if(!map) return;
+  const dpr = window.devicePixelRatio||1;
+  const cont = map.getContainer();
+  cw = cont.clientWidth; ch = cont.clientHeight;
+  const W = Math.min(Math.round(cw*dpr), 8000), H = Math.min(Math.round(ch*dpr), 8000);
+  if(canvas.width!==W||canvas.height!==H){ canvas.width=W; canvas.height=H; }
+  canvas.style.width=cw+'px'; canvas.style.height=ch+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cw,ch);
+  projectAll();
+
+  /* молчащие: без данных */
+  if(showNoData){
+    for(let i=0;i<PTS.length;i++){
+      const p=PTS[i]; if(p.t!=null||!scr[i].vis) continue;
+      ctx.beginPath(); ctx.arc(scr[i].x,scr[i].y,3,0,6.2832);
+      ctx.fillStyle=GRAY; ctx.fill();
+      ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.16)'; ctx.stroke();
+    }
+  }
+  /* точки с данными */
+  for(let i=0;i<PTS.length;i++){
+    const p=PTS[i]; if(p.t==null||!scr[i].vis) continue;
+    const x=scr[i].x, y=scr[i].y, col=COLORS[p.ci];
+    if(p.out!=null){
+      const g=ctx.createRadialGradient(x,y,p.r*.3,x,y,p.r*2.6);
+      g.addColorStop(0,'rgba(255,138,0,.5)'); g.addColorStop(1,'rgba(255,138,0,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,p.r*2.6,0,6.2832); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(x,y,p.r,0,6.2832);
+    ctx.fillStyle=col; ctx.globalAlpha=.95; ctx.fill(); ctx.globalAlpha=1;
+    ctx.lineWidth=1; ctx.strokeStyle='rgba(255,255,255,.3)'; ctx.stroke();
+  }
+  /* вспышки */
+  if(mode==='rhythm'){
+    for(let i=0;i<PTS.length;i++){
+      const p=PTS[i]; if(p.t==null||p.out!=null||!scr[i].vis) continue;
+      const P=yearDur/p.t, f=((p.t*tau/yearDur)+p.ph)%1;
+      const x=scr[i].x, y=scr[i].y, col=COLORS[p.ci];
+      if(P>=1.2){
+        const w=0.6/P;
+        if(f<w){
+          const age=f*P, k=1-age/0.6;
+          const g=ctx.createRadialGradient(x,y,0,x,y,p.r+4);
+          g.addColorStop(0,'rgba(255,255,255,'+(0.85*k)+')'); g.addColorStop(1,'rgba(255,255,255,0)');
+          ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,p.r+4,0,6.2832); ctx.fill();
+          const R=p.r+(age/0.6)*(p.r+30);
+          ctx.beginPath(); ctx.arc(x,y,R,0,6.2832);
+          ctx.strokeStyle=hexA(col,0.75*k); ctx.lineWidth=2*k+0.5; ctx.stroke();
+        }
+      } else {
+        const g=ctx.createRadialGradient(x,y,p.r*.2,x,y,p.r*2.1);
+        g.addColorStop(0,hexA(col,.45)); g.addColorStop(1,hexA(col,0));
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,p.r*2.1,0,6.2832); ctx.fill();
+        ctx.beginPath(); ctx.arc(x,y,p.r*.55,0,6.2832);
+        ctx.fillStyle='rgba(255,255,255,.4)'; ctx.fill();
+      }
+    }
+  }
+  /* подписи */
+  ctx.font='600 12px "Inter Tight",Inter,sans-serif';
+  ctx.textBaseline='middle';
+  for(let i=0;i<PTS.length;i++){
+    const p=PTS[i]; if(!p.lb||!scr[i].vis) continue;
+    const x=scr[i].x, y=scr[i].y;
+    const ox=p.ldx*(p.r+8), oy=p.ldy*(p.r+11);
+    ctx.textAlign=p.la;
+    if(p.out!=null){
+      ctx.lineWidth=3; ctx.strokeStyle='rgba(8,10,14,.9)'; ctx.lineJoin='round';
+      ctx.strokeText(p.lb,x+ox,y+oy-8); ctx.strokeText(p.outS,x+ox,y+oy+6);
+      ctx.fillStyle='#fff'; ctx.fillText(p.lb,x+ox,y+oy-8);
+      ctx.fillStyle=WARM; ctx.fillText(p.outS,x+ox,y+oy+6);
+    } else {
+      ctx.lineWidth=3; ctx.strokeStyle='rgba(8,10,14,.9)'; ctx.lineJoin='round';
+      ctx.strokeText(p.lb,x+ox,y+oy);
+      ctx.fillStyle='#fff'; ctx.fillText(p.lb,x+ox,y+oy);
+    }
+  }
+  /* закреплённая точка */
+  if(pinned>=0 && scr[pinned]){
+    const p=PTS[pinned], x=scr[pinned].x, y=scr[pinned].y;
+    ctx.beginPath(); ctx.arc(x,y,p.r+5,0,6.2832);
+    ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+function hexA(hex,a){
+  const n=parseInt(hex.slice(1),16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';
+}
+
+/* ---------- HUD ---------- */
+const elCounter=document.getElementById('counter'), elTotal=document.getElementById('counter-total'),
+      elFill=document.getElementById('tl-fill'), elKnob=document.getElementById('tl-knob'),
+      pin=document.getElementById('pin'), tip=document.getElementById('tooltip');
+let lastCounter='';
+function updateHud(){
+  const f = mode==='static' ? 1 : tau/yearDur;
+  elFill.style.width=(f*100)+'%'; elKnob.style.left=(f*100)+'%';
+  const s=fmtC(ST.total*f);
+  if(s!==lastCounter){ elCounter.textContent=s; lastCounter=s; }
+  if(pinned>=0) updatePin();
+}
+
+/* ---------- наведение ---------- */
+function hitTest(px,py){
+  let bi=-1, bd=1e9;
+  for(let i=0;i<PTS.length;i++){
+    const p=PTS[i];
+    if(p.t==null && !showNoData) continue;
+    const s=scr[i]; if(!s||!s.vis) continue;
+    const th = Math.max((p.t!=null?p.r:3)+6, 12);
+    const d=Math.hypot(px-s.x,py-s.y);
+    if(d<th && d<bd){ bd=d; bi=i; }
+  }
+  return bi;
+}
+function tipHtml(p){
+  let h='<div class="tt-name">'+esc(p.nm)+'</div>';
+  h+='<div><span class="tt-dim">Население:</span> '+(p.pop!=null?fmtC(p.pop):'—')+'</div>';
+  if(p.t!=null){
+    h+='<div><span class="tt-dim">Поездок на человека в год:</span> <span class="tt-key">'+fmt(p.t,1)+'</span></div>';
+    h+='<div>в среднем житель садится в автобус раз в <b>'+Math.round(365/p.t)+'</b> '+(plural(Math.round(365/p.t)))+'</div>';
+    h+='<div class="tt-dim">Автобусов: '+(p.bus!=null?fmtC(p.bus):'нет данных')+(p.b10!=null?' · '+fmt(p.b10,1)+' на 10 000 жителей':'')+'</div>';
+  } else {
+    h+='<div class="tt-key">Данных о перевозках нет</div>';
+  }
+  return h;
+}
+function plural(n){ const m=n%10, h=n%100; if(m===1&&h!==11) return 'день'; if(m>=2&&m<=4&&(h<12||h>14)) return 'дня'; return 'дней'; }
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function showTip(i,px,py){
+  tip.innerHTML=tipHtml(PTS[i]); tip.hidden=false;
+  const r=tip.getBoundingClientRect();
+  let x=px+14, y=py+14;
+  if(x+r.width>innerWidth-8) x=px-r.width-14;
+  if(y+r.height>innerHeight-8) y=py-r.height-14;
+  tip.style.left=x+'px'; tip.style.top=y+'px';
+}
+function hideTip(){ tip.hidden=true; }
+function onHover(e){
+  if(!scr.length) return;
+  const i=hitTest(e.point.x,e.point.y);
+  map.getCanvas().style.cursor = i>=0 ? 'pointer' : '';
+  if(i>=0) showTip(i,e.point.x,e.point.y); else hideTip();
+}
+function onClick(e){
+  if(!scr.length) return;
+  const i=hitTest(e.point.x,e.point.y);
+  if(i>=0){ pinPoint(i); hideTip(); }
+  else unpin();
+}
+function pinPoint(i){
+  pinned=i;
+  const p=PTS[i];
+  document.getElementById('p-name').textContent=p.lb||p.nm;
+  document.getElementById('p-val').innerHTML = p.t!=null
+    ? fmt(p.t,1)+' поездок в год · население '+fmtC(p.pop)
+    : 'Данных о перевозках нет';
+  buildTicks(p);
+  pin.hidden=false; updatePin();
+}
+function unpin(){ pinned=-1; pin.hidden=true; }
+document.getElementById('p-close').addEventListener('click', unpin);
+
+function buildTicks(p){
+  const tl=document.getElementById('p-tl');
+  tl.querySelectorAll('i').forEach(n=>n.remove());
+  if(p.t==null) return;
+  const total=Math.floor(p.t), step=Math.max(1,Math.ceil(total/110));
+  const frag=document.createDocumentFragment();
+  for(let k=0;k<total;k+=step){
+    const fr=(k+1-p.ph)/p.t;
+    if(fr<0||fr>1) continue;
+    const t=document.createElement('i');
+    t.style.left=(fr*100)+'%'; frag.appendChild(t);
+  }
+  tl.appendChild(frag);
+}
+function updatePin(){
+  const p=PTS[pinned], s=scr[pinned];
+  if(!s) return;
+  const cardH=150, above=(s.y-p.r-12-cardH)>0;
+  pin.style.left=Math.min(Math.max(s.x,130),cw-130)+'px';
+  pin.style.top=(above?s.y-p.r-12:s.y+p.r+12)+'px';
+  pin.style.transform=above?'translate(-50%,-100%)':'translate(-50%,0)';
+  const f=mode==='static'?1:tau/yearDur;
+  document.getElementById('p-num').innerHTML = p.t!=null
+    ? '≈ '+fmtC(Math.floor(p.t*f))+' <small>из '+fmt(p.t,1)+' поездок</small>'
+    : '—';
+  document.getElementById('p-prog').style.left=(f*100)+'%';
+}
+
+/* ---------- контролы ---------- */
+const btnPause=document.getElementById('btnPause');
+btnPause.addEventListener('click',()=>{
+  running=!running;
+  btnPause.textContent=running?'Пауза':'Старт';
+  lastTs=null; needDraw();
+});
+document.querySelectorAll('[data-y]').forEach(b=>b.addEventListener('click',()=>{
+  yearDur=+b.dataset.y;
+  document.querySelectorAll('[data-y]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  lastTs=null; needDraw();
+}));
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.mode===m));
+  btnPause.disabled=(m==='static');
+  if(m==='static'){ tau=yearDur; }
+  else { tau=0; running=true; btnPause.textContent='Пауза'; lastTs=null; }
+  needDraw();
+}
+document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
+document.getElementById('chkNodata').addEventListener('change',e=>{ showNoData=e.target.checked; needDraw(); });
+if(reduced) setMode('static');
+
+/* ---------- статические тексты из данных ---------- */
+document.getElementById('seen-list').innerHTML =
+  '<li>Данные есть у <b>'+ST.withData+'</b> из <b>'+ST.plotted+'</b> нанесённых пунктов</li>'+
+  '<li>Медиана — <b>'+fmt(ST.median,1)+'</b> поездки в год</li>'+
+  '<li>Разрыв без выбросов: <b>'+fmt(ST.maxNo,1)+'</b> ('+ST.maxName+') против <b>'+fmt(ST.minNo,1)+'</b> ('+ST.minName+') — <b>'+fmt(ST.ratio,1)+'×</b></li>';
+document.getElementById('seen-mobile').innerHTML = document.getElementById('seen-list').innerHTML;
+document.getElementById('missing-list').textContent = ST.missing.join(', ');
+document.getElementById('counter-total').textContent = 'из '+fmtC(ST.total)+' поездок';
+/* легенда: шкала */
+const lgScale=document.getElementById('lg-scale');
+COLORS.forEach(c=>{ const i=document.createElement('i'); i.style.background=c; lgScale.appendChild(i); });
+document.getElementById('lg-min').textContent=fmt(CUTS[0],1);
+document.getElementById('lg-max').textContent=fmt(ST.maxNo,1)+' + выбросы';
+/* месяцы */
+const MD=[0,31,59,90,120,151,181,212,243,273,304,334],
+      MN=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'],
+      tlMonths=document.getElementById('tl-months');
+const mSkip = innerWidth<861 ? 2 : 1;
+MD.forEach((d,i)=>{
+  if(i % mSkip) return;
+  const s=document.createElement('span');
+  s.className='tl-month'+(i===0?' first':'');
+  s.style.left=(d/365*100)+'%';
+  s.textContent=MN[i];
+  tlMonths.appendChild(s);
+});
+/* сворачивание легенды на телефоне */
+if(innerWidth<861){
+  document.getElementById('lg-details').open=false;
+  document.getElementById('seen-mobile').hidden=false;
+}
+
+/* ---------- запуск ---------- */
+initMap(rasterStyle());
+map.on('load',()=>{
+  const b=new maplibregl.LngLatBounds();
+  PTS.forEach(p=>b.extend([p.lon,p.lat]));
+  const mob=innerWidth<861;
+  map.fitBounds(b,{padding:{top:mob?290:150,bottom:mob?310:110,left:mob?20:40,right:mob?20:150},duration:0,maxZoom:7.4});
+  needDraw();
+});
+new ResizeObserver(needDraw).observe(document.getElementById('map'));
+</script>
+</body>
+</html>
